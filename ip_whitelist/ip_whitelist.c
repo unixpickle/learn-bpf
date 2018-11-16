@@ -2,28 +2,31 @@
 #include <linux/filter.h>
 #include <netinet/in.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
 const int PORT = 1337;
 
+uint32_t parse_ip(const char* ip);
+
 int main(int argc, const char** argv) {
   if (argc != 2) {
-    fprintf(stderr, "Usage: ip_whitelist <source ip>");
+    fprintf(stderr, "Usage: ip_whitelist <source ip>\n");
     return 1;
   }
 
   uint32_t ip = parse_ip(argv[1]);
   struct sock_filter instructions[] = {
-      {0x20, 0, 0, ((uint32_t)-1) + 12},
+      {0x20, 0, 0, ((uint32_t)-0x100000) + 12},
       {0x15, 0, 1, ip},
       {0x6, 0, 0, 0x00040000},
       {0x6, 0, 0, 0x00000000},
   };
   struct sock_fprog program = {
       sizeof(instructions) / sizeof(instructions[0]),
-      &instructions,
+      instructions,
   };
 
   int fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -47,8 +50,8 @@ int main(int argc, const char** argv) {
 
   struct sockaddr_in bind_address;
   bind_address.sin_family = AF_INET;
-  bind_address.sin_addr.s_addr = 0;
-  bind_address.sin_port = PORT;
+  bind_address.sin_addr.s_addr = INADDR_ANY;
+  bind_address.sin_port = htons(PORT);
   if (bind(fd, (struct sockaddr*)&bind_address, sizeof(bind_address)) < 0) {
     perror("bind");
     return 1;
