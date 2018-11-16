@@ -9,25 +9,14 @@
 
 const int PORT = 1337;
 
+void attach_whitelist(int fd, int count, const char** ips);
 uint32_t parse_ip(const char* ip);
 
 int main(int argc, const char** argv) {
-  if (argc != 2) {
-    fprintf(stderr, "Usage: ip_whitelist <source ip>\n");
+  if (argc < 2) {
+    fprintf(stderr, "Usage: ip_whitelist <source_ip> [source_ip ...]\n");
     return 1;
   }
-
-  uint32_t ip = parse_ip(argv[1]);
-  struct sock_filter instructions[] = {
-      {0x20, 0, 0, ((uint32_t)-0x100000) + 12},
-      {0x15, 0, 1, ip},
-      {0x6, 0, 0, 0x00040000},
-      {0x6, 0, 0, 0x00000000},
-  };
-  struct sock_fprog program = {
-      sizeof(instructions) / sizeof(instructions[0]),
-      instructions,
-  };
 
   int fd = socket(AF_INET, SOCK_STREAM, 0);
   if (fd < 0) {
@@ -42,11 +31,7 @@ int main(int argc, const char** argv) {
     return 1;
   }
 
-  if (setsockopt(fd, SOL_SOCKET, SO_ATTACH_FILTER, &program, sizeof(program)) <
-      0) {
-    perror("set BPF program");
-    return 1;
-  }
+  attach_whitelist(fd, argc - 1, argv + 1);
 
   struct sockaddr_in bind_address;
   bind_address.sin_family = AF_INET;
@@ -76,6 +61,36 @@ int main(int argc, const char** argv) {
   }
 
   return 0;
+}
+
+void attach_whitelist(int fd, int count, const char** ips) {
+  int lastIdx = count * 2 + 1;
+  struct sock_filter* instructions =
+      (struct sock_filter*)malloc(sizeof(struct sock_filter) * (lastIdx + 1));
+  struct sock_filter load_op = {0x20, 0, 0, ((uint32_t)-0x100000) + 12};
+  struct sock_filter drop_op = {0x6, 0, 0, 0x00000000};
+  struct sock_filter jump_op = {0x15, 0, 1, 0};
+  struct sock_filter accept_op = {0x6, 0, 0, 0x00040000};
+  memcpy(&instructions[0], &load_op, sizeof(load_op));
+  memcpy(&instructions[lastIdx], &drop_op, sizeof(drop_op));
+  for (int i = 0; i < count; ++i) {
+    uint32_t ip = parse_ip(ips[i]);
+    jump_op.k = ip;
+    memcpy(&instructions[1 + i * 2], &jump_op, sizeof(jump_op));
+    memcpy(&instructions[2 + i * 2], &accept_op, sizeof(accept_op));
+  }
+
+  struct sock_fprog prog = {
+      lastIdx + 1,
+      instructions,
+  };
+
+  int res = setsockopt(fd, SOL_SOCKET, SO_ATTACH_FILTER, &prog, sizeof(prog));
+  free(instructions);
+  if (res < 0) {
+    perror("set BPF program");
+    exit(1);
+  }
 }
 
 uint32_t parse_ip(const char* ip) {
