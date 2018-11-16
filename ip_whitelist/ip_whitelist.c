@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <unistd.h>
 
 const int PORT = 1337;
 
@@ -14,15 +15,15 @@ int main(int argc, const char** argv) {
   }
 
   uint32_t ip = parse_ip(argv[1]);
-  struct sock_filter instructions = {
+  struct sock_filter instructions[] = {
       {0x20, 0, 0, ((uint32_t)-1) + 12},
       {0x15, 0, 1, ip},
       {0x6, 0, 0, 0x00040000},
       {0x6, 0, 0, 0x00000000},
   };
   struct sock_fprog program = {
-    .len : sizeof(instructions) / sizeof(instructions[0]),
-    .filter : &instructions,
+      sizeof(instructions) / sizeof(instructions[0]),
+      &instructions,
   };
 
   int fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -38,7 +39,8 @@ int main(int argc, const char** argv) {
     return 1;
   }
 
-  if (setsockopt(fd, SOL_SOCKET, &program, sizeof(program)) < 0) {
+  if (setsockopt(fd, SOL_SOCKET, SO_ATTACH_FILTER, &program, sizeof(program)) <
+      0) {
     perror("set BPF program");
     return 1;
   }
