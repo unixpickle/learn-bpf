@@ -13,13 +13,14 @@
 int create_socket();
 int create_map();
 void attach_filter(int fd, int mapFd);
-void read_loop(int fd);
+void read_loop(int fd, int mapFd);
+void print_map(int mapFd);
 
 int main(int argc, const char** argv) {
   int fd = create_socket();
   int mapFd = create_map();
   attach_filter(fd, mapFd);
-  read_loop(fd);
+  read_loop(fd, mapFd);
   close(fd);
   close(mapFd);
   return 0;
@@ -127,12 +128,30 @@ void attach_filter(int fd, int mapFd) {
   }
 }
 
-void read_loop(int fd) {
+void read_loop(int fd, int mapFd) {
   char* buf = malloc(0x10000);
   while (1) {
     if (recv(fd, buf, 0x10000, 0) < 0) {
       perror("recv");
       return;
     }
+    print_map(mapFd);
   }
+}
+
+void print_map(int mapFd) {
+  union bpf_attr bpf_args;
+  bzero(&bpf_args, sizeof(bpf_args));
+  for (uint8_t key = 0; key < 13; ++key) {
+    uint32_t value = 0;
+    bpf_args.map_fd = mapFd;
+    bpf_args.key = (uint64_t)&key;
+    bpf_args.value = (uint64_t)&value;
+    syscall(__NR_bpf, BPF_MAP_LOOKUP_ELEM, &bpf_args, sizeof(bpf_args));
+    if (key > 0) {
+      printf(" ");
+    }
+    printf("%d=%u", (int)key, value);
+  }
+  printf("\n");
 }
