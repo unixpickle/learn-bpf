@@ -1,6 +1,7 @@
 #include <inttypes.h>
 #include <linux/bpf.h>
 #include <linux/filter.h>
+#include <linux/if_ether.h>
 #include <netinet/in.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -9,8 +10,13 @@
 #include <syscall.h>
 #include <unistd.h>
 
+int create_socket();
+int create_map();
+void attach_filter(int fd, int mapFd);
+void read_loop(int fd);
+
 int main(int argc, const char** argv) {
-  int socket = create_socket();
+  int fd = create_socket();
   int mapFd = create_map();
   attach_filter(fd, mapFd);
   read_loop(fd);
@@ -55,33 +61,35 @@ void attach_filter(int fd, int mapFd) {
       {BPF_STX | BPF_MEM | BPF_B, 10, 0, -4, 0},
 
       // Load the map file descriptor into R1.
-      {BPF_ALU | BPF_MOV | BPF_K, 1, 0, 0, (sint32_t)mapFd},
+      {BPF_LD | BPF_DW | BPF_K, 1, BPF_PSEUDO_MAP_FD, 0, mapFd},
+      {0, 0, 0, 0, 0},
       // Load FP into R2.
       {BPF_ALU64 | BPF_MOV | BPF_X, 2, 10, 0, 0},
       // Put FP[-4] in R2.
-      {BPF_ALU64 | BPF_SUB | BPF_K, 2, 0, 0, -4},
+      {BPF_ALU64 | BPF_ADD | BPF_K, 2, 0, 0, -4},
       // Lookup the current map value.
       {BPF_JMP | BPF_CALL, 0, 0, 0, BPF_FUNC_map_lookup_elem},
 
       // Check if the map value is NULL.
-      {BPF_JMP | BPF_JE | BPF_K, 0, 0, 1, 0},
+      {BPF_JMP | BPF_JEQ | BPF_K, 0, 0, 2, 0},
       // Load the value out of (u32*)R0 into R0.
-      {BPF_LD | BPF_MEM | BPF_W, 0, 0, 0, 0},
+      {BPF_LDX | BPF_MEM | BPF_W, 0, 0, 0, 0},
       // Increment the value in the map.
       {BPF_ALU | BPF_ADD | BPF_K, 0, 0, 0, 1},
       // Store the value into FP[-8].
       {BPF_STX | BPF_MEM | BPF_W, 10, 0, -8, 0},
 
       // Load the map file descriptor into R1.
-      {BPF_ALU | BPF_MOV | BPF_K, 1, 0, 0, (sint32_t)mapFd},
+      {BPF_LD | BPF_DW | BPF_K, 1, BPF_PSEUDO_MAP_FD, 0, mapFd},
+      {0, 0, 0, 0, 0},
       // Load FP into R2.
       {BPF_ALU64 | BPF_MOV | BPF_X, 2, 10, 0, 0},
       // Put FP[-4] in R2.
-      {BPF_ALU64 | BPF_SUB | BPF_K, 2, 0, 0, -4},
+      {BPF_ALU64 | BPF_ADD | BPF_K, 2, 0, 0, -4},
       // Load FP into R3.
       {BPF_ALU64 | BPF_MOV | BPF_X, 3, 10, 0, 0},
       // Put FP[-8] in R3.
-      {BPF_ALU64 | BPF_SUB | BPF_K, 3, 0, 0, -8},
+      {BPF_ALU64 | BPF_ADD | BPF_K, 3, 0, 0, -8},
       // Set the BPF_ANY flag.
       {BPF_ALU | BPF_MOV | BPF_K, 4, 0, 0, 0, BPF_ANY},
       // Set the current map value.
@@ -124,7 +132,7 @@ void read_loop(int fd) {
   while (1) {
     if (recv(fd, buf, 0x10000, 0) < 0) {
       perror("recv");
-      return 1;
+      return;
     }
   }
 }
