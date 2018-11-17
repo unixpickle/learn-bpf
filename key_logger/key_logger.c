@@ -59,11 +59,13 @@ int create_map() {
 
 int create_program(int mapFd) {
   struct bpf_insn program[] = {
-      // Store some crap into FP[-16] for now.
-      // TODO: read arguments from context.
-      {BPF_ST | BPF_MEM | BPF_W, 10, 0, -8, 1337},
-      {BPF_ST | BPF_MEM | BPF_W, 10, 0, -12, 1338},
-      {BPF_ST | BPF_MEM | BPF_W, 10, 0, -16, 1339},
+      // Copy RSI, RDX, RCX into the stack at FP[-16].
+      {BPF_LDX | BPF_MEM | BPF_W, 2, 1, 13 * 8, 0},
+      {BPF_STX | BPF_MEM | BPF_W, 10, 2, -16, 0},
+      {BPF_LDX | BPF_MEM | BPF_W, 2, 1, 12 * 8, 0},
+      {BPF_STX | BPF_MEM | BPF_W, 10, 2, -12, 0},
+      {BPF_LDX | BPF_MEM | BPF_W, 2, 1, 11 * 8, 0},
+      {BPF_STX | BPF_MEM | BPF_W, 10, 2, -8, 0},
 
       // Load the map file descriptor into R1.
       {BPF_LD | BPF_DW | BPF_IMM, 1, BPF_PSEUDO_MAP_FD, 0, mapFd},
@@ -83,14 +85,14 @@ int create_program(int mapFd) {
       {BPF_JMP | BPF_EXIT, 0, 0, 0, 0},
       // Load start index into R1.
       {BPF_LDX | BPF_MEM | BPF_W, 1, 0, 0, 0},
-      // Put the start index into FP[-20].
-      {BPF_STX | BPF_MEM | BPF_W, 10, 1, -20, 0},
+      // Put the start index into FP[-28].
+      {BPF_STX | BPF_MEM | BPF_W, 10, 1, -28, 0},
       // Load end index into R1.
       {BPF_LDX | BPF_MEM | BPF_W, 1, 0, 4, 0},
       // Put the end index into FP[-24].
       {BPF_STX | BPF_MEM | BPF_W, 10, 1, -24, 0},
-      // Put zero into FP[-28].
-      {BPF_ST | BPF_MEM | BPF_W, 10, 0, -28, 0},
+      // Put zero into FP[-20].
+      {BPF_ST | BPF_MEM | BPF_W, 10, 0, -20, 0},
 
       // Load the map file descriptor into R1.
       {BPF_LD | BPF_DW | BPF_IMM, 1, BPF_PSEUDO_MAP_FD, 0, mapFd},
