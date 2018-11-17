@@ -62,7 +62,7 @@ void attach_filter(int fd, int mapFd) {
       {BPF_STX | BPF_MEM | BPF_B, 10, 0, -4, 0},
 
       // Load the map file descriptor into R1.
-      {BPF_LD | BPF_DW | BPF_K, 1, BPF_PSEUDO_MAP_FD, 0, mapFd},
+      {BPF_LD | BPF_DW | BPF_IMM, 1, BPF_PSEUDO_MAP_FD, 0, mapFd},
       {0, 0, 0, 0, 0},
       // Load FP into R2.
       {BPF_ALU64 | BPF_MOV | BPF_X, 2, 10, 0, 0},
@@ -81,7 +81,7 @@ void attach_filter(int fd, int mapFd) {
       {BPF_STX | BPF_MEM | BPF_W, 10, 0, -8, 0},
 
       // Load the map file descriptor into R1.
-      {BPF_LD | BPF_DW | BPF_K, 1, BPF_PSEUDO_MAP_FD, 0, mapFd},
+      {BPF_LD | BPF_DW | BPF_IMM, 1, BPF_PSEUDO_MAP_FD, 0, mapFd},
       {0, 0, 0, 0, 0},
       // Load FP into R2.
       {BPF_ALU64 | BPF_MOV | BPF_X, 2, 10, 0, 0},
