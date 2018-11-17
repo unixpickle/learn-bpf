@@ -10,7 +10,7 @@
 #include <unistd.h>
 
 const int PORT = 1337;
-const int USE_EBPF = 0;
+const int USE_EBPF = 1;
 
 void attach_whitelist(int fd, int count, const char** ips);
 void attach_whitelist_ebpf(int fd, int count, const char** ips);
@@ -102,34 +102,30 @@ void attach_whitelist(int fd, int count, const char** ips) {
 }
 
 void attach_whitelist_ebpf(int fd, int count, const char** ips) {
-  int numInsns = count * 6 + 3;
+  int numInsns = count * 4 + 4;
   struct bpf_insn* instructions =
       (struct bpf_insn*)malloc(sizeof(struct bpf_insn) * numInsns);
   bzero(instructions, sizeof(struct bpf_insn) * numInsns);
+
   struct bpf_insn mov_to_r6 = {BPF_MOV | BPF_X | BPF_ALU64, 6, 1, 0, 0};
-  struct bpf_insn load_first_op = {BPF_ABS | BPF_H | BPF_LD, 0, 0, 0,
-                                   -0x100000 + 12};
-  struct bpf_insn load_second_op = {BPF_ABS | BPF_H | BPF_LD, 0, 0, 0,
-                                    -0x100000 + 14};
+  struct bpf_insn mov_to_r7 = {BPF_MOV | BPF_ALU, 7, 0, 0, 0};
+  struct bpf_insn load_op = {BPF_ABS | BPF_W | BPF_LD, 0, 0, 0, -0x100000 + 12};
   struct bpf_insn exit_op = {BPF_JMP | BPF_EXIT, 0, 0, 0, 0};
   struct bpf_insn accept_op = {BPF_MOV | BPF_ALU64, 0, 0, 0, 0x40000};
   struct bpf_insn reject_op = {BPF_MOV | BPF_ALU64, 0, 0, 0, 0};
-  struct bpf_insn jump_op = {BPF_JNE | BPF_K | BPF_JMP, 0, 0, 2, 0};
+  struct bpf_insn jump_op = {BPF_JNE | BPF_X | BPF_JMP, 0, 7, 2, 0};
+
   memcpy(&instructions[0], &mov_to_r6, sizeof(mov_to_r6));
+  memcpy(&instructions[1], &load_op, sizeof(load_op));
   memcpy(&instructions[numInsns - 2], &reject_op, sizeof(reject_op));
   memcpy(&instructions[numInsns - 1], &exit_op, sizeof(exit_op));
   for (int i = 0; i < count; ++i) {
     uint32_t ip = parse_ip(ips[i]);
-    memcpy(&instructions[1 + i * 6], &load_first_op, sizeof(load_first_op));
-    jump_op.imm = ip >> 16;
-    jump_op.off = 4;
-    memcpy(&instructions[2 + i * 6], &jump_op, sizeof(jump_op));
-    memcpy(&instructions[3 + i * 6], &load_second_op, sizeof(load_second_op));
-    jump_op.imm = ip & 0xffff;
-    jump_op.off = 2;
-    memcpy(&instructions[4 + i * 6], &jump_op, sizeof(jump_op));
-    memcpy(&instructions[5 + i * 6], &accept_op, sizeof(accept_op));
-    memcpy(&instructions[6 + i * 6], &exit_op, sizeof(exit_op));
+    mov_to_r7.imm = ip;
+    memcpy(&instructions[2 + i * 4], &mov_to_r7, sizeof(mov_to_r7));
+    memcpy(&instructions[3 + i * 4], &jump_op, sizeof(jump_op));
+    memcpy(&instructions[4 + i * 4], &accept_op, sizeof(accept_op));
+    memcpy(&instructions[5 + i * 4], &exit_op, sizeof(exit_op));
   }
 
   char* logBuffer = (char*)malloc(0x10000);
