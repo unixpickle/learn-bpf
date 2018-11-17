@@ -97,10 +97,10 @@ int create_program(int mapFd) {
       // Load the map file descriptor into R1.
       {BPF_LD | BPF_DW | BPF_IMM, 1, BPF_PSEUDO_MAP_FD, 0, mapFd},
       {0, 0, 0, 0, 0},
-      // Put FP[-24] in R2.
+      // Put FP[-24] into R2.
       {BPF_ALU64 | BPF_MOV | BPF_X, 2, 10, 0, 0},
       {BPF_ALU64 | BPF_ADD | BPF_K, 2, 0, 0, -24},
-      // Load FP[-16] into R3.
+      // Put FP[-16] into R3.
       {BPF_ALU64 | BPF_MOV | BPF_X, 3, 10, 0, 0},
       {BPF_ALU64 | BPF_ADD | BPF_K, 3, 0, 0, -16},
       // Set the BPF_ANY flag.
