@@ -1,15 +1,19 @@
 #include <inttypes.h>
+#include <linux/bpf.h>
 #include <linux/filter.h>
 #include <netinet/in.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <syscall.h>
 #include <unistd.h>
 
 const int PORT = 1337;
+const int USE_EBPF = 0;
 
 void attach_whitelist(int fd, int count, const char** ips);
+void attach_whitelist_ebpf(int fd, int count, const char** ips);
 uint32_t parse_ip(const char* ip);
 
 int main(int argc, const char** argv) {
@@ -31,7 +35,11 @@ int main(int argc, const char** argv) {
     return 1;
   }
 
-  attach_whitelist(fd, argc - 1, argv + 1);
+  if (USE_EBPF) {
+    attach_whitelist_ebpf(fd, argc - 1, argv + 1);
+  } else {
+    attach_whitelist(fd, argc - 1, argv + 1);
+  }
 
   struct sockaddr_in bind_address;
   bind_address.sin_family = AF_INET;
@@ -87,6 +95,64 @@ void attach_whitelist(int fd, int count, const char** ips) {
 
   int res = setsockopt(fd, SOL_SOCKET, SO_ATTACH_FILTER, &prog, sizeof(prog));
   free(instructions);
+  if (res < 0) {
+    perror("set BPF program");
+    exit(1);
+  }
+}
+
+void attach_whitelist_ebpf(int fd, int count, const char** ips) {
+  int numInsns = count * 6 + 3;
+  struct bpf_insn* instructions =
+      (struct bpf_insn*)malloc(sizeof(struct bpf_insn) * numInsns);
+  bzero(instructions, sizeof(struct bpf_insn) * numInsns);
+  struct bpf_insn mov_to_r6 = {BPF_MOV | BPF_X | BPF_ALU64, 6, 1, 0, 0};
+  struct bpf_insn load_first_op = {BPF_ABS | BPF_H | BPF_LD, 0, 0, 0,
+                                   -0x100000 + 12};
+  struct bpf_insn load_second_op = {BPF_ABS | BPF_H | BPF_LD, 0, 0, 0,
+                                    -0x100000 + 14};
+  struct bpf_insn exit_op = {BPF_JMP | BPF_EXIT, 0, 0, 0, 0};
+  struct bpf_insn accept_op = {BPF_MOV | BPF_ALU64, 0, 0, 0, 0x40000};
+  struct bpf_insn reject_op = {BPF_MOV | BPF_ALU64, 0, 0, 0, 0};
+  struct bpf_insn jump_op = {BPF_JNE | BPF_K | BPF_JMP, 0, 0, 2, 0};
+  memcpy(&instructions[0], &mov_to_r6, sizeof(mov_to_r6));
+  memcpy(&instructions[numInsns - 2], &reject_op, sizeof(reject_op));
+  memcpy(&instructions[numInsns - 1], &exit_op, sizeof(exit_op));
+  for (int i = 0; i < count; ++i) {
+    uint32_t ip = parse_ip(ips[i]);
+    memcpy(&instructions[1 + i * 6], &load_first_op, sizeof(load_first_op));
+    jump_op.imm = ip >> 16;
+    jump_op.off = 4;
+    memcpy(&instructions[2 + i * 6], &jump_op, sizeof(jump_op));
+    memcpy(&instructions[3 + i * 6], &load_second_op, sizeof(load_second_op));
+    jump_op.imm = ip & 0xffff;
+    jump_op.off = 2;
+    memcpy(&instructions[4 + i * 6], &jump_op, sizeof(jump_op));
+    memcpy(&instructions[5 + i * 6], &accept_op, sizeof(accept_op));
+    memcpy(&instructions[6 + i * 6], &exit_op, sizeof(exit_op));
+  }
+
+  char* logBuffer = (char*)malloc(0x10000);
+  bzero(logBuffer, 0x10000);
+  union bpf_attr bpf_args;
+  bzero(&bpf_args, sizeof(bpf_args));
+  bpf_args.prog_type = BPF_PROG_TYPE_SOCKET_FILTER;
+  bpf_args.insns = (uint64_t)instructions;
+  bpf_args.insn_cnt = numInsns, bpf_args.license = (uint64_t) "BSD";
+  bpf_args.log_level = 1;
+  bpf_args.log_size = 0x10000;
+  bpf_args.log_buf = (uint64_t)logBuffer;
+  bpf_args.kern_version = 0;
+
+  int filter = syscall(__NR_bpf, BPF_PROG_LOAD, &bpf_args, sizeof(bpf_args));
+  free(instructions);
+  if (filter < 0) {
+    perror("bpf");
+    fprintf(stderr, "%s\n", logBuffer);
+    exit(1);
+  }
+
+  int res = setsockopt(fd, SOL_SOCKET, SO_ATTACH_BPF, &filter, sizeof(filter));
   if (res < 0) {
     perror("set BPF program");
     exit(1);
