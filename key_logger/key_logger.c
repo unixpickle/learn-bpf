@@ -67,6 +67,14 @@ int create_program(int mapFd) {
       {BPF_LDX | BPF_MEM | BPF_W, 2, 1, 11 * 8, 0},
       {BPF_STX | BPF_MEM | BPF_W, 10, 2, -8, 0},
 
+      // Load the event type into R0.
+      {BPF_LDX | BPF_MEM | BPF_W, 0, 1, 13 * 8, 0},
+      // Only look at key events (type == 1).
+      {BPF_JMP | BPF_JEQ | BPF_K, 0, 0, 2, 1},
+      // Exit with a zero status.
+      {BPF_ALU | BPF_MOV | BPF_K, 0, 0, 0, 0},
+      {BPF_JMP | BPF_EXIT, 0, 0, 0, 0},
+
       // Load the map file descriptor into R1.
       {BPF_LD | BPF_DW | BPF_IMM, 1, BPF_PSEUDO_MAP_FD, 0, mapFd},
       {0, 0, 0, 0, 0},
