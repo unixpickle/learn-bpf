@@ -1,6 +1,8 @@
 #ifndef __KPROBES_UTIL_H__
 #define __KPROBES_UTIL_H__
 
+#include <linux/bpf.h>
+
 //
 // Utilities for creating and using kprobe perf events.
 //
@@ -21,5 +23,9 @@ int open_kprobe(const char* name);
 // Attach a BPF program to an open kprobe.
 // Returns 0 on success, -1 on failure.
 int attach_program(int progFd, int perfFd);
+
+// Load a kprobe BPF program.
+// Dies on failure, with a verbose error message.
+int load_kprobe_bpf(struct bpf_insn* program, int numInsns);
 
 #endif

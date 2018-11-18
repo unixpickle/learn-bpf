@@ -2,7 +2,6 @@
 #include <linux/bpf.h>
 #include <linux/filter.h>
 #include <linux/perf_event.h>
-#include <linux/version.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -146,40 +145,7 @@ int create_program(int mapFd) {
       {BPF_ALU | BPF_MOV | BPF_K, 0, 0, 0, 0},
       {BPF_JMP | BPF_EXIT, 0, 0, 0, 0},
   };
-
-  char* logBuffer = (char*)malloc(0x10000);
-  bzero(logBuffer, 0x10000);
-  union bpf_attr bpf_args;
-  bzero(&bpf_args, sizeof(bpf_args));
-  bpf_args.prog_type = BPF_PROG_TYPE_KPROBE;
-  bpf_args.insns = (uint64_t)program;
-  bpf_args.insn_cnt = sizeof(program) / sizeof(struct bpf_insn);
-  bpf_args.license = (uint64_t) "GPL";
-  bpf_args.log_level = 1;
-  bpf_args.log_size = 0x10000;
-  bpf_args.log_buf = (uint64_t)logBuffer;
-  bpf_args.kern_version = LINUX_VERSION_CODE;
-
-  int filter = syscall(__NR_bpf, BPF_PROG_LOAD, &bpf_args, sizeof(bpf_args));
-  if (filter >= 0) {
-    return filter;
-  }
-
-  // Brute force the kernel version number.
-  for (int i = 0; i < 255; ++i) {
-    for (int j = 0; j < 255; ++j) {
-      bpf_args.kern_version = KERNEL_VERSION(LINUX_VERSION_CODE >> 16, i, j);
-      int filter =
-          syscall(__NR_bpf, BPF_PROG_LOAD, &bpf_args, sizeof(bpf_args));
-      if (filter >= 0) {
-        return filter;
-      }
-    }
-  }
-
-  perror("load program");
-  fprintf(stderr, "%s\n", logBuffer);
-  exit(1);
+  return load_kprobe_bpf(program, sizeof(program) / sizeof(struct bpf_insn));
 }
 
 int create_perf_event() {
