@@ -1,11 +1,11 @@
+//
+// Utilities for creating and using kprobe perf events.
+//
+
 #ifndef __KPROBES_UTIL_H__
 #define __KPROBES_UTIL_H__
 
 #include <linux/bpf.h>
-
-//
-// Utilities for creating and using kprobe perf events.
-//
 
 // Create a kprobe, open it, and return the file descriptor.
 // Returns a negative value in the case of failure.
