@@ -9,6 +9,7 @@
 #include <sys/socket.h>
 #include <syscall.h>
 #include <unistd.h>
+#include "map_util.h"
 
 int create_socket();
 int create_map();
@@ -118,37 +119,8 @@ void attach_filter(int fd, int mapFd) {
 #define COPY_LOOP_16(x) COPY_LOOP_8(x) COPY_LOOP_8(x + 8)
       COPY_LOOP_16(0) COPY_LOOP_16(16)
 
-      // Load the map file descriptor into R1.
-      {BPF_LD | BPF_DW | BPF_IMM, 1, BPF_PSEUDO_MAP_FD, 0, mapFd},
-      {0, 0, 0, 0, 0},
-      // R2 = FP - 32
-      {BPF_ALU64 | BPF_MOV | BPF_X, 2, 10, 0, 0},
-      {BPF_ALU64 | BPF_ADD | BPF_K, 2, 0, 0, -32},
-      // Lookup the current map value.
-      {BPF_JMP | BPF_CALL, 0, 0, 0, BPF_FUNC_map_lookup_elem},
-
-      // Check if the map value is NULL.
-      {BPF_JMP | BPF_JEQ | BPF_K, 0, 0, 1, 0},
-      // R0 = *(u32*)R0
-      {BPF_LDX | BPF_MEM | BPF_W, 0, 0, 0, 0},
-      // R0 += 1
-      {BPF_ALU | BPF_ADD | BPF_K, 0, 0, 0, 1},
-      // FP[-36] = R0
-      {BPF_STX | BPF_MEM | BPF_W, 10, 0, -36, 0},
-
-      // Load the map file descriptor into R1.
-      {BPF_LD | BPF_DW | BPF_IMM, 1, BPF_PSEUDO_MAP_FD, 0, mapFd},
-      {0, 0, 0, 0, 0},
-      // R2 = FP - 32
-      {BPF_ALU64 | BPF_MOV | BPF_X, 2, 10, 0, 0},
-      {BPF_ALU64 | BPF_ADD | BPF_K, 2, 0, 0, -32},
-      // R3 = FP - 36
-      {BPF_ALU64 | BPF_MOV | BPF_X, 3, 10, 0, 0},
-      {BPF_ALU64 | BPF_ADD | BPF_K, 3, 0, 0, -36},
-      // R4 = BPF_ANY
-      {BPF_ALU | BPF_MOV | BPF_K, 4, 0, 0, BPF_ANY},
-      // Set the current map value.
-      {BPF_JMP | BPF_CALL, 0, 0, 0, BPF_FUNC_map_update_elem},
+      // Increment the TLD's count in the map.
+      INC_BPF_MAP(mapFd, -32, -36),
 
       // Accept the packet.
       {BPF_ALU | BPF_MOV | BPF_K, 0, 0, 0, 0x4000},

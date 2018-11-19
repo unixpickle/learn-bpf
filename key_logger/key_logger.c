@@ -7,6 +7,7 @@
 #include <syscall.h>
 #include <unistd.h>
 #include "kprobes.h"
+#include "map_util.h"
 
 const int RING_SIZE = 31;
 
@@ -74,18 +75,12 @@ int create_program(int mapFd) {
       {BPF_ALU | BPF_MOV | BPF_K, 0, 0, 0, 0},
       {BPF_JMP | BPF_EXIT, 0, 0, 0, 0},
 
-      // Load the map file descriptor into R1.
-      {BPF_LD | BPF_DW | BPF_IMM, 1, BPF_PSEUDO_MAP_FD, 0, mapFd},
-      {0, 0, 0, 0, 0},
-      // Load FP[-4] into R2.
-      {BPF_ALU64 | BPF_MOV | BPF_X, 2, 10, 0, 0},
-      {BPF_ALU64 | BPF_ADD | BPF_K, 2, 0, 0, -4},
       // Store the key into FP[-4].
       {BPF_ST | BPF_MEM | BPF_W, 10, 0, -4, RING_SIZE},
       // Lookup the metadata key.
-      {BPF_JMP | BPF_CALL, 0, 0, 0, BPF_FUNC_map_lookup_elem},
+      READ_BPF_MAP(mapFd, -4),
 
-      // Exit if NULL.
+      // Check if meta-data is NULL.
       {BPF_JMP | BPF_JNE | BPF_K, 0, 0, 2, 0},
       // Exit with a zero status.
       {BPF_ALU | BPF_MOV | BPF_K, 0, 0, 0, 0},
@@ -101,19 +96,7 @@ int create_program(int mapFd) {
       // Put zero into FP[-20].
       {BPF_ST | BPF_MEM | BPF_W, 10, 0, -20, 0},
 
-      // Load the map file descriptor into R1.
-      {BPF_LD | BPF_DW | BPF_IMM, 1, BPF_PSEUDO_MAP_FD, 0, mapFd},
-      {0, 0, 0, 0, 0},
-      // Put FP[-24] into R2.
-      {BPF_ALU64 | BPF_MOV | BPF_X, 2, 10, 0, 0},
-      {BPF_ALU64 | BPF_ADD | BPF_K, 2, 0, 0, -24},
-      // Put FP[-16] into R3.
-      {BPF_ALU64 | BPF_MOV | BPF_X, 3, 10, 0, 0},
-      {BPF_ALU64 | BPF_ADD | BPF_K, 3, 0, 0, -16},
-      // Set the BPF_ANY flag.
-      {BPF_ALU | BPF_MOV | BPF_K, 4, 0, 0, BPF_ANY},
-      // Set the current map value.
-      {BPF_JMP | BPF_CALL, 0, 0, 0, BPF_FUNC_map_update_elem},
+      WRITE_BPF_MAP(mapFd, -24, -16),
 
       // Load end index into R1.
       {BPF_LDX | BPF_MEM | BPF_W, 1, 10, -24, 0},
@@ -123,22 +106,10 @@ int create_program(int mapFd) {
       {BPF_ALU | BPF_MOD | BPF_K, 1, 0, 0, RING_SIZE},
       // Put the end index into FP[-24].
       {BPF_STX | BPF_MEM | BPF_W, 10, 1, -24, 0},
-
-      // Load the map file descriptor into R1.
-      {BPF_LD | BPF_DW | BPF_IMM, 1, BPF_PSEUDO_MAP_FD, 0, mapFd},
-      {0, 0, 0, 0, 0},
       // Store the key into FP[-4].
       {BPF_ST | BPF_MEM | BPF_W, 10, 0, -4, RING_SIZE},
-      // Put FP[-4] in R2.
-      {BPF_ALU64 | BPF_MOV | BPF_X, 2, 10, 0, 0},
-      {BPF_ALU64 | BPF_ADD | BPF_K, 2, 0, 0, -4},
-      // Load FP[-28] into R3.
-      {BPF_ALU64 | BPF_MOV | BPF_X, 3, 10, 0, 0},
-      {BPF_ALU64 | BPF_ADD | BPF_K, 3, 0, 0, -28},
-      // Set the BPF_ANY flag.
-      {BPF_ALU | BPF_MOV | BPF_K, 4, 0, 0, BPF_ANY},
-      // Set the current map value.
-      {BPF_JMP | BPF_CALL, 0, 0, 0, BPF_FUNC_map_update_elem},
+
+      WRITE_BPF_MAP(mapFd, -4, -28),
 
       // Terminate the program.
       {BPF_ALU | BPF_MOV | BPF_K, 0, 0, 0, 0},

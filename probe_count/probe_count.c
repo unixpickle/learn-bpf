@@ -7,6 +7,7 @@
 #include <syscall.h>
 #include <unistd.h>
 #include "kprobes.h"
+#include "map_util.h"
 
 int create_map();
 int create_program();
@@ -59,37 +60,7 @@ int create_program(int mapFd) {
       // Put the key into FP[-4].
       {BPF_ST | BPF_B | BPF_MEM, 10, 0, -4, 0},
 
-      // Load the map file descriptor into R1.
-      {BPF_LD | BPF_DW | BPF_IMM, 1, BPF_PSEUDO_MAP_FD, 0, mapFd},
-      {0, 0, 0, 0, 0},
-      // Load FP[-4] into R2.
-      {BPF_ALU64 | BPF_MOV | BPF_X, 2, 10, 0, 0},
-      {BPF_ALU64 | BPF_ADD | BPF_K, 2, 0, 0, -4},
-      // Lookup the key.
-      {BPF_JMP | BPF_CALL, 0, 0, 0, BPF_FUNC_map_lookup_elem},
-
-      // Check if the map value is NULL.
-      {BPF_JMP | BPF_JEQ | BPF_K, 0, 0, 1, 0},
-      // R0 = *(u32*)R0
-      {BPF_LDX | BPF_MEM | BPF_W, 0, 0, 0, 0},
-      // R0 += 1
-      {BPF_ALU | BPF_ADD | BPF_K, 0, 0, 0, 1},
-      // FP[-8] = R0
-      {BPF_STX | BPF_MEM | BPF_W, 10, 0, -8, 0},
-
-      // Load the map file descriptor into R1.
-      {BPF_LD | BPF_DW | BPF_IMM, 1, BPF_PSEUDO_MAP_FD, 0, mapFd},
-      {0, 0, 0, 0, 0},
-      // Set R2 to &FP[-4].
-      {BPF_ALU64 | BPF_MOV | BPF_X, 2, 10, 0, 0},
-      {BPF_ALU64 | BPF_ADD | BPF_K, 2, 0, 0, -4},
-      // Set R3 to &FP[-8].
-      {BPF_ALU64 | BPF_MOV | BPF_X, 3, 10, 0, 0},
-      {BPF_ALU64 | BPF_ADD | BPF_K, 3, 0, 0, -8},
-      // R4 = BPF_ANY
-      {BPF_ALU | BPF_MOV | BPF_K, 4, 0, 0, BPF_ANY},
-      // Set the current map value.
-      {BPF_JMP | BPF_CALL, 0, 0, 0, BPF_FUNC_map_update_elem},
+      INC_BPF_MAP(mapFd, -4, -8),
 
       // Terminate the program.
       {BPF_ALU | BPF_MOV | BPF_K, 0, 0, 0, 0},
