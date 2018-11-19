@@ -1,7 +1,6 @@
 #include <inttypes.h>
 #include <linux/bpf.h>
 #include <linux/filter.h>
-#include <linux/perf_event.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
