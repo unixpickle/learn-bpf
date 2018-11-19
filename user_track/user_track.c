@@ -50,7 +50,7 @@ int create_program(int mapFd) {
       // R7 = function return value (bytes written).
       {BPF_LDX | BPF_MEM | BPF_W, 7, 1, 10 * 8, 0},
 
-      // Put the PID into FP[-4].
+      // Put the UID into FP[-4].
       {BPF_JMP | BPF_CALL, 0, 0, 0, BPF_FUNC_get_current_uid_gid},
       {BPF_STX | BPF_W | BPF_MEM, 10, 0, -4, 0},
 
@@ -116,7 +116,7 @@ void print_map(int mapFd) {
   bpf_args.key = (uint64_t)&key;
   bpf_args.next_key = (uint64_t)&next_key;
 
-  printf("PID amount read: ");
+  printf("UID amount read: ");
   while (
       !syscall(__NR_bpf, BPF_MAP_GET_NEXT_KEY, &bpf_args, sizeof(bpf_args))) {
     key = next_key;
