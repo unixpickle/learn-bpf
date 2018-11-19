@@ -45,6 +45,12 @@ fail:
   return -1;
 }
 
+int delete_kprobe(const char* name) {
+  char command[512];
+  snprintf(command, sizeof(command), "-:%s", name);
+  return create_kprobe(name, command);
+}
+
 int open_kprobe(const char* name) {
   char path[PATH_MAX];
   snprintf(path, sizeof(path), "/sys/kernel/debug/tracing/events/kprobes/%s/id",

@@ -10,20 +10,29 @@
 
 int create_map();
 int create_program();
-int create_perf_event();
-void print_map(int mapFd);
+int create_perf_event(const char* functionName);
+uint32_t get_count(int mapFd);
 
-int main() {
+int main(int argc, const char** argv) {
+  if (argc != 2) {
+    fprintf(stderr, "Usage: %s <kernel_func>\n", argv[0]);
+    return 1;
+  }
   int mapFd = create_map();
   int progFd = create_program(mapFd);
-  int perfFd = create_perf_event();
+  int perfFd = create_perf_event(argv[1]);
   if (attach_program(progFd, perfFd)) {
     perror("attach_program");
     return 1;
   }
+  uint32_t oldCount = 0;
   while (1) {
-    sleep(1);
-    print_map(mapFd);
+    uint32_t count = get_count(mapFd);
+    if (count != oldCount) {
+      printf("func=%s count=%u\n", argv[1], count);
+      oldCount = count;
+    }
+    usleep(100000);
   }
   return 0;
 }
@@ -32,9 +41,9 @@ int create_map() {
   union bpf_attr bpf_args;
   bzero(&bpf_args, sizeof(bpf_args));
   bpf_args.map_type = BPF_MAP_TYPE_HASH;
-  bpf_args.key_size = 4;
+  bpf_args.key_size = 1;
   bpf_args.value_size = 4;
-  bpf_args.max_entries = 32;
+  bpf_args.max_entries = 1;
 
   int mapFd = syscall(__NR_bpf, BPF_MAP_CREATE, &bpf_args, sizeof(bpf_args));
   if (mapFd < 0) {
@@ -47,12 +56,8 @@ int create_map() {
 
 int create_program(int mapFd) {
   struct bpf_insn program[] = {
-      // R7 = function return value (bytes written).
-      {BPF_LDX | BPF_MEM | BPF_W, 7, 1, 10 * 8, 0},
-
-      // Put the UID into FP[-4].
-      {BPF_JMP | BPF_CALL, 0, 0, 0, BPF_FUNC_get_current_uid_gid},
-      {BPF_STX | BPF_W | BPF_MEM, 10, 0, -4, 0},
+      // Put the key into FP[-4].
+      {BPF_ST | BPF_B | BPF_MEM, 10, 0, -4, 0},
 
       // Load the map file descriptor into R1.
       {BPF_LD | BPF_DW | BPF_IMM, 1, BPF_PSEUDO_MAP_FD, 0, mapFd},
@@ -67,8 +72,8 @@ int create_program(int mapFd) {
       {BPF_JMP | BPF_JEQ | BPF_K, 0, 0, 1, 0},
       // R0 = *(u32*)R0
       {BPF_LDX | BPF_MEM | BPF_W, 0, 0, 0, 0},
-      // R0 += R7
-      {BPF_ALU | BPF_ADD | BPF_X, 0, 7, 0, 0},
+      // R0 += 1
+      {BPF_ALU | BPF_ADD | BPF_K, 0, 0, 0, 1},
       // FP[-8] = R0
       {BPF_STX | BPF_MEM | BPF_W, 10, 0, -8, 0},
 
@@ -93,10 +98,11 @@ int create_program(int mapFd) {
   return load_kprobe_bpf(program, sizeof(program) / sizeof(struct bpf_insn));
 }
 
-int create_perf_event() {
-  int fd = create_open_kprobe("sock_read_iter_ret",
-                              "r:kprobes/sock_read_iter_ret "
-                              "sock_read_iter");
+int create_perf_event(const char* functionName) {
+  delete_kprobe("probe_count");
+  char cmd[512];
+  snprintf(cmd, sizeof(cmd), "p:kprobes/probe_count %s", functionName);
+  int fd = create_open_kprobe("probe_count", cmd);
   if (fd < 0) {
     perror("create_open_kprobe");
     exit(1);
@@ -104,35 +110,18 @@ int create_perf_event() {
   return fd;
 }
 
-void print_map(int mapFd) {
+uint32_t get_count(int mapFd) {
   union bpf_attr bpf_args;
   bzero(&bpf_args, sizeof(bpf_args));
 
-  uint32_t key = 0xffffffff;
-  uint32_t next_key = 0;
+  uint8_t key = 0;
   uint32_t value = 0;
 
   bpf_args.map_fd = mapFd;
   bpf_args.key = (uint64_t)&key;
-  bpf_args.next_key = (uint64_t)&next_key;
+  bpf_args.value = (uint64_t)&value;
 
-  printf("UID amount read: ");
-  while (
-      !syscall(__NR_bpf, BPF_MAP_GET_NEXT_KEY, &bpf_args, sizeof(bpf_args))) {
-    key = next_key;
+  syscall(__NR_bpf, BPF_MAP_LOOKUP_ELEM, &bpf_args, sizeof(bpf_args));
 
-    bzero(&bpf_args, sizeof(bpf_args));
-    bpf_args.map_fd = mapFd;
-    bpf_args.key = (uint64_t)&key;
-    bpf_args.value = (uint64_t)&value;
-    syscall(__NR_bpf, BPF_MAP_LOOKUP_ELEM, &bpf_args, sizeof(bpf_args));
-
-    bzero(&bpf_args, sizeof(bpf_args));
-    bpf_args.map_fd = mapFd;
-    bpf_args.key = (uint64_t)&key;
-    bpf_args.next_key = (uint64_t)&next_key;
-
-    printf("%u=%u ", key, value);
-  }
-  printf("\n");
+  return value;
 }

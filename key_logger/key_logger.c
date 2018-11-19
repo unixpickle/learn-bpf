@@ -111,7 +111,7 @@ int create_program(int mapFd) {
       {BPF_ALU64 | BPF_MOV | BPF_X, 3, 10, 0, 0},
       {BPF_ALU64 | BPF_ADD | BPF_K, 3, 0, 0, -16},
       // Set the BPF_ANY flag.
-      {BPF_ALU | BPF_MOV | BPF_K, 4, 0, 0, 0, BPF_ANY},
+      {BPF_ALU | BPF_MOV | BPF_K, 4, 0, 0, BPF_ANY},
       // Set the current map value.
       {BPF_JMP | BPF_CALL, 0, 0, 0, BPF_FUNC_map_update_elem},
 
@@ -136,7 +136,7 @@ int create_program(int mapFd) {
       {BPF_ALU64 | BPF_MOV | BPF_X, 3, 10, 0, 0},
       {BPF_ALU64 | BPF_ADD | BPF_K, 3, 0, 0, -28},
       // Set the BPF_ANY flag.
-      {BPF_ALU | BPF_MOV | BPF_K, 4, 0, 0, 0, BPF_ANY},
+      {BPF_ALU | BPF_MOV | BPF_K, 4, 0, 0, BPF_ANY},
       // Set the current map value.
       {BPF_JMP | BPF_CALL, 0, 0, 0, BPF_FUNC_map_update_elem},
 

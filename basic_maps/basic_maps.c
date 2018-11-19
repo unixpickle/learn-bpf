@@ -92,7 +92,7 @@ void attach_filter(int fd, int mapFd) {
       // Put FP[-8] in R3.
       {BPF_ALU64 | BPF_ADD | BPF_K, 3, 0, 0, -8},
       // Set the BPF_ANY flag.
-      {BPF_ALU | BPF_MOV | BPF_K, 4, 0, 0, 0, BPF_ANY},
+      {BPF_ALU | BPF_MOV | BPF_K, 4, 0, 0, BPF_ANY},
       // Set the current map value.
       {BPF_JMP | BPF_CALL, 0, 0, 0, BPF_FUNC_map_update_elem},
 

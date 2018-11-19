@@ -16,6 +16,10 @@ int create_open_kprobe(const char* name, const char* cmd);
 // Returns a negative value on failure.
 int create_kprobe(const char* name, const char* cmd);
 
+// Delete a kprobe by name.
+// Returns a negative value on failure.
+int delete_kprobe(const char* name);
+
 // Open an existing kprobe given it's name.
 // Returns a negative value on failure.
 int open_kprobe(const char* name);
