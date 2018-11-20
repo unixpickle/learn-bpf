@@ -4,60 +4,36 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <syscall.h>
 #include <unistd.h>
 #include "kprobes.h"
-#include "map_util.h"
+#include "ring_queue.h"
 
-const int RING_SIZE = 31;
-
-int create_map();
 int create_program();
 int create_perf_event();
-int pop_ring(int mapFd, int* type, int* code, int* value);
-void read_map(int mapFd, int idx, int* type, int* code, int* value);
-void write_map(int mapFd, int idx, int type, int code, int value);
 
 int main() {
-  int mapFd = create_map();
-  int progFd = create_program(mapFd);
+  ring_queue_t* queue = ring_queue_create(31, 12);
+  if (!queue) {
+    perror("ring_queue_create");
+    return 1;
+  }
+  int progFd = create_program(queue);
   int perfFd = create_perf_event();
   if (attach_program(progFd, perfFd)) {
     perror("attach_program");
     return 1;
   }
   while (1) {
-    int type;
-    int code;
-    int value;
-    while (pop_ring(mapFd, &type, &code, &value)) {
-      printf("type=%d code=%d value=%d\n", type, code, value);
+    int value[3];
+    while (ring_queue_pop(queue, &value)) {
+      printf("type=%d code=%d value=%d\n", value[0], value[1], value[2]);
     }
     usleep(100000);
   }
   return 0;
 }
 
-int create_map() {
-  union bpf_attr bpf_args;
-  bzero(&bpf_args, sizeof(bpf_args));
-  bpf_args.map_type = BPF_MAP_TYPE_HASH;
-  bpf_args.key_size = 4;
-  bpf_args.value_size = 12;
-  bpf_args.max_entries = RING_SIZE + 1;
-
-  int mapFd = syscall(__NR_bpf, BPF_MAP_CREATE, &bpf_args, sizeof(bpf_args));
-  if (mapFd < 0) {
-    perror("create map");
-    exit(1);
-  }
-
-  write_map(mapFd, RING_SIZE, 0, 0, 0);
-
-  return mapFd;
-}
-
-int create_program(int mapFd) {
+int create_program(ring_queue_t* queue) {
   struct bpf_insn program[] = {
       // Copy RSI, RDX, RCX into the stack at FP[-16].
       {BPF_LDX | BPF_MEM | BPF_W, 2, 1, 13 * 8, 0},
@@ -67,6 +43,9 @@ int create_program(int mapFd) {
       {BPF_LDX | BPF_MEM | BPF_W, 2, 1, 11 * 8, 0},
       {BPF_STX | BPF_MEM | BPF_W, 10, 2, -8, 0},
 
+      // Store 0 in header scratch space.
+      {BPF_ST | BPF_MEM | BPF_W, 10, 0, -20, 0},
+
       // Load the event type into R0.
       {BPF_LDX | BPF_MEM | BPF_W, 0, 1, 13 * 8, 0},
       // Only look at key events (type == 1).
@@ -75,41 +54,7 @@ int create_program(int mapFd) {
       {BPF_ALU | BPF_MOV | BPF_K, 0, 0, 0, 0},
       {BPF_JMP | BPF_EXIT, 0, 0, 0, 0},
 
-      // Store the key into FP[-4].
-      {BPF_ST | BPF_MEM | BPF_W, 10, 0, -4, RING_SIZE},
-      // Lookup the metadata key.
-      READ_BPF_MAP(mapFd, -4),
-
-      // Check if meta-data is NULL.
-      {BPF_JMP | BPF_JNE | BPF_K, 0, 0, 2, 0},
-      // Exit with a zero status.
-      {BPF_ALU | BPF_MOV | BPF_K, 0, 0, 0, 0},
-      {BPF_JMP | BPF_EXIT, 0, 0, 0, 0},
-      // Load start index into R1.
-      {BPF_LDX | BPF_MEM | BPF_W, 1, 0, 0, 0},
-      // Put the start index into FP[-28].
-      {BPF_STX | BPF_MEM | BPF_W, 10, 1, -28, 0},
-      // Load end index into R1.
-      {BPF_LDX | BPF_MEM | BPF_W, 1, 0, 4, 0},
-      // Put the end index into FP[-24].
-      {BPF_STX | BPF_MEM | BPF_W, 10, 1, -24, 0},
-      // Put zero into FP[-20].
-      {BPF_ST | BPF_MEM | BPF_W, 10, 0, -20, 0},
-
-      WRITE_BPF_MAP(mapFd, -24, -16),
-
-      // Load end index into R1.
-      {BPF_LDX | BPF_MEM | BPF_W, 1, 10, -24, 0},
-      // Increment the end index.
-      {BPF_ALU | BPF_ADD | BPF_K, 1, 0, 0, 1},
-      // Wrap around the end index.
-      {BPF_ALU | BPF_MOD | BPF_K, 1, 0, 0, RING_SIZE},
-      // Put the end index into FP[-24].
-      {BPF_STX | BPF_MEM | BPF_W, 10, 1, -24, 0},
-      // Store the key into FP[-4].
-      {BPF_ST | BPF_MEM | BPF_W, 10, 0, -4, RING_SIZE},
-
-      WRITE_BPF_MAP(mapFd, -4, -28),
+      PUSH_QUEUE(queue, -16, -28, -4)
 
       // Terminate the program.
       {BPF_ALU | BPF_MOV | BPF_K, 0, 0, 0, 0},
@@ -125,48 +70,4 @@ int create_perf_event() {
     exit(1);
   }
   return fd;
-}
-
-int pop_ring(int mapFd, int* type, int* code, int* value) {
-  int start;
-  int end;
-  int unused;
-  read_map(mapFd, RING_SIZE, &start, &end, NULL);
-  if (start == end) {
-    return 0;
-  }
-  write_map(mapFd, RING_SIZE, (start + 1) % RING_SIZE, end, 0);
-  read_map(mapFd, start, type, code, value);
-  return 1;
-}
-
-void read_map(int mapFd, int idx, int* type, int* code, int* value) {
-  int32_t buf[3] = {0, 0, 0};
-  union bpf_attr bpf_args;
-  bzero(&bpf_args, sizeof(bpf_args));
-  uint32_t key = idx;
-  bpf_args.map_fd = mapFd;
-  bpf_args.key = (uint64_t)&key;
-  bpf_args.value = (uint64_t)buf;
-  syscall(__NR_bpf, BPF_MAP_LOOKUP_ELEM, &bpf_args, sizeof(bpf_args));
-  if (type) {
-    *type = buf[0];
-  }
-  if (code) {
-    *code = buf[1];
-  }
-  if (value) {
-    *value = buf[2];
-  }
-}
-
-void write_map(int mapFd, int idx, int type, int code, int value) {
-  int32_t buf[3] = {type, code, value};
-  union bpf_attr bpf_args;
-  bzero(&bpf_args, sizeof(bpf_args));
-  uint32_t key = idx;
-  bpf_args.map_fd = mapFd;
-  bpf_args.key = (uint64_t)&key;
-  bpf_args.value = (uint64_t)buf;
-  syscall(__NR_bpf, BPF_MAP_UPDATE_ELEM, &bpf_args, sizeof(bpf_args));
 }

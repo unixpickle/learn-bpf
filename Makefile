@@ -8,7 +8,7 @@ build/ip_whitelist: ip_whitelist/ip_whitelist.c
 build/basic_maps: basic_maps/basic_maps.c
 	$(CC) $(CFLAGS) -o $@ $^
 
-build/key_logger: key_logger/key_logger.c common/kprobes.c
+build/key_logger: key_logger/key_logger.c common/kprobes.c common/ring_queue.c
 	$(CC) $(CFLAGS) -o $@ $^
 
 build/tld_count: tld_count/tld_count.c

@@ -60,7 +60,7 @@ int create_program(int mapFd) {
       // Put the key into FP[-4].
       {BPF_ST | BPF_B | BPF_MEM, 10, 0, -4, 0},
 
-      INC_BPF_MAP(mapFd, -4, -8),
+      INC_BPF_MAP(mapFd, -4, -8)
 
       // Terminate the program.
       {BPF_ALU | BPF_MOV | BPF_K, 0, 0, 0, 0},

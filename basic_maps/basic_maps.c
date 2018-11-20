@@ -62,7 +62,7 @@ void attach_filter(int fd, int mapFd) {
       // Store the value into FP[-4] as a key.
       {BPF_STX | BPF_MEM | BPF_B, 10, 0, -4, 0},
 
-      INC_BPF_MAP(mapFd, -4, -8),
+      INC_BPF_MAP(mapFd, -4, -8)
 
       // Accept the packet.
       {BPF_ALU | BPF_MOV | BPF_K, 0, 0, 0, 0x4000},

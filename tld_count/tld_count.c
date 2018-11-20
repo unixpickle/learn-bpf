@@ -120,7 +120,7 @@ void attach_filter(int fd, int mapFd) {
       COPY_LOOP_16(0) COPY_LOOP_16(16)
 
       // Increment the TLD's count in the map.
-      INC_BPF_MAP(mapFd, -32, -36),
+      INC_BPF_MAP(mapFd, -32, -36)
 
       // Accept the packet.
       {BPF_ALU | BPF_MOV | BPF_K, 0, 0, 0, 0x4000},

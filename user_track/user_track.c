@@ -56,13 +56,13 @@ int create_program(int mapFd) {
       {BPF_STX | BPF_W | BPF_MEM, 10, 0, -4, 0},
 
       // R0 = map[UID]
-      READ_BPF_MAP_32(mapFd, -4),
+      READ_BPF_MAP_32(mapFd, -4)
       // R0 += R7
       {BPF_ALU | BPF_ADD | BPF_X, 0, 7, 0, 0},
       // FP[-8] = R0
       {BPF_STX | BPF_MEM | BPF_W, 10, 0, -8, 0},
       // map[UID] = FP[-8].
-      WRITE_BPF_MAP(mapFd, -4, -8),
+      WRITE_BPF_MAP(mapFd, -4, -8)
 
       // Terminate the program.
       {BPF_ALU | BPF_MOV | BPF_K, 0, 0, 0, 0},
