@@ -4,6 +4,7 @@
 #include <linux/filter.h>
 #include <linux/in.h>
 #include <linux/in6.h>
+#include <linux/un.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -11,7 +12,7 @@
 #include "kprobes.h"
 #include "ring_queue.h"
 
-#define MAX_ADDR_SIZE (int)sizeof(struct sockaddr_in)
+#define MAX_ADDR_SIZE (int)sizeof(struct sockaddr_un)
 
 int create_program();
 int create_perf_event();
@@ -41,6 +42,9 @@ int main() {
                (addr->sin_addr.s_addr >> 16) & 0xff,
                (addr->sin_addr.s_addr >> 8) & 0xff,
                addr->sin_addr.s_addr & 0xff, addr->sin_port);
+      } else if (addrSize == sizeof(sockaddr_un)) {
+        struct sockaddr_un* addr = *(struct sockaddr_un*)&value[2];
+        printf(" UNIX(%s)", addr->sun_path);
       } else if (addrSize <= MAX_ADDR_SIZE) {
         unsigned char* addr = (char*)&value[2];
         for (int i = 0; i < addrSize; ++i) {
@@ -59,18 +63,13 @@ int create_program(ring_queue_t* queue) {
       // R6 = R1.
       {BPF_ALU64 | BPF_MOV | BPF_X, 6, 1, 0, 0},
 
-      // FP[0-44] = 0.
-      {BPF_ST | BPF_MEM | BPF_W, 10, 0, -4, 0},
-      {BPF_ST | BPF_MEM | BPF_W, 10, 0, -8, 0},
-      {BPF_ST | BPF_MEM | BPF_W, 10, 0, -12, 0},
-      {BPF_ST | BPF_MEM | BPF_W, 10, 0, -16, 0},
-      {BPF_ST | BPF_MEM | BPF_W, 10, 0, -20, 0},
-      {BPF_ST | BPF_MEM | BPF_W, 10, 0, -24, 0},
-      {BPF_ST | BPF_MEM | BPF_W, 10, 0, -28, 0},
-      {BPF_ST | BPF_MEM | BPF_W, 10, 0, -32, 0},
-      {BPF_ST | BPF_MEM | BPF_W, 10, 0, -36, 0},
-      {BPF_ST | BPF_MEM | BPF_W, 10, 0, -40, 0},
-      {BPF_ST | BPF_MEM | BPF_W, 10, 0, -44, 0},
+#define ZERO_OFFSET(x) {BPF_ST | BPF_MEM | BPF_W, 10, 0, -(4 + x * 4), 0},
+#define ZERO_2(x) ZERO_OFFSET(x) ZERO_OFFSET(x + 1)
+#define ZERO_4(x) ZERO_2(x) ZERO_2(x + 2)
+#define ZERO_8(x) ZERO_4(x) ZERO_4(x + 4)
+#define ZERO_16(x) ZERO_8(x) ZERO_8(x + 8)
+      // Zero out a large part of the stack.
+      ZERO_16(0) ZERO_16(16) ZERO_16(24) ZERO_16(32) ZERO_16(48) ZERO_16(64)
 
       // FP[-(8 + MAX_ADDR_SIZE)] = PID.
       {BPF_JMP | BPF_CALL, 0, 0, 0, BPF_FUNC_get_current_pid_tgid},
