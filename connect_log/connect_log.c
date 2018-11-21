@@ -64,7 +64,7 @@ int create_program(ring_queue_t* queue) {
       // R6 = R1.
       {BPF_ALU64 | BPF_MOV | BPF_X, 6, 1, 0, 0},
 
-#define ZERO_OFFSET(x) {BPF_ST | BPF_MEM | BPF_W, 10, 0, -(4 + x * 4), 0},
+#define ZERO_OFFSET(x) {BPF_ST | BPF_MEM | BPF_W, 10, 0, -(4 + (x)*4), 0},
 #define ZERO_2(x) ZERO_OFFSET(x) ZERO_OFFSET(x + 1)
 #define ZERO_4(x) ZERO_2(x) ZERO_2(x + 2)
 #define ZERO_8(x) ZERO_4(x) ZERO_4(x + 4)
