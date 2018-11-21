@@ -13,7 +13,7 @@
 #include "ring_queue.h"
 
 #define MAX_ADDR_SIZE \
-  (int)(sizeof(struct sockaddr_un) + (1 - (sizeof(struct sockaddr_un) % 4)))
+  (int)(sizeof(struct sockaddr_un) + (4 - (sizeof(struct sockaddr_un) % 4)))
 
 int create_program();
 int create_perf_event();
