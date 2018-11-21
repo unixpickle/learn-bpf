@@ -42,7 +42,7 @@ int main() {
                (addr->sin_addr.s_addr >> 16) & 0xff,
                (addr->sin_addr.s_addr >> 8) & 0xff,
                addr->sin_addr.s_addr & 0xff, addr->sin_port);
-      } else if (addrSize == sizeof(sockaddr_un)) {
+      } else if (addrSize == sizeof(struct sockaddr_un)) {
         struct sockaddr_un* addr = (struct sockaddr_un*)&value[2];
         printf(" UNIX(%s)", addr->sun_path);
       } else if (addrSize <= MAX_ADDR_SIZE) {
