@@ -34,16 +34,25 @@ int main() {
   while (1) {
     while (ring_queue_pop(queue, &value)) {
       int addrSize = value[1];
+      if (addrSize < 2) {
+        continue;
+      }
       printf("PID %d: connect:", value[0]);
-      if (addrSize == sizeof(struct sockaddr_in)) {
+      sa_family_t family = *(sa_family_t*)&value[2];
+      if (family == AF_INET) {
         struct sockaddr_in* addr = (struct sockaddr_in*)&value[2];
         addr->sin_addr.s_addr = ntohl(addr->sin_addr.s_addr);
-        addr->sin_port = ntohs(addr->sin_port);
         printf(" %d.%d.%d.%d:%d", addr->sin_addr.s_addr >> 24,
                (addr->sin_addr.s_addr >> 16) & 0xff,
                (addr->sin_addr.s_addr >> 8) & 0xff,
-               addr->sin_addr.s_addr & 0xff, addr->sin_port);
-      } else if (addrSize == sizeof(struct sockaddr_un)) {
+               addr->sin_addr.s_addr & 0xff, ntohs(addr->sin_port));
+      } else if (family == AF_INET6) {
+        struct sockaddr_in6* addr = (struct sockaddr_in6*)&value[2];
+        char ipStr[512];
+        inet_ntop((int)family, &addr->sin6_addr, ipStr,
+                  sizeof(addr->sin6_addr));
+        printf(" [%s]:%d", ipStr, ntohs(addr->sin6_port));
+      } else if (family == AF_UNIX) {
         struct sockaddr_un* addr = (struct sockaddr_un*)&value[2];
         printf(" UNIX(%s)", addr->sun_path);
       } else if (addrSize <= MAX_ADDR_SIZE) {
